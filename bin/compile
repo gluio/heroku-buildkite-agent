@@ -1,2 +1,2 @@
 #!/bin/sh
-exit 0
+cat Procfile >> $1/Procfile
