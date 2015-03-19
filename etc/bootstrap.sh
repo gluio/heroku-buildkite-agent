@@ -107,9 +107,6 @@ function buildkite-local-hook {
 #
 ##############################################################
 
-# Add the $BUILDKITE_BIN_PATH to the $PATH
-export PATH="$BUILDKITE_BIN_PATH:$PATH"
-
 # Come up with the place that the repository will be checked out to
 SANITIZED_AGENT_NAME=$(echo $BUILDKITE_AGENT_NAME | tr -d '"')
 PROJECT_FOLDER_NAME="$SANITIZED_AGENT_NAME/$BUILDKITE_PROJECT_SLUG"
