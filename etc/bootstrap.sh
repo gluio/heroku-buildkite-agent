@@ -11,8 +11,21 @@
 #                                                                                 |_|
 # https://github.com/buildkite/agent/blob/master/templates/bootstrap.sh
 
-# Causes this script to exit if a variable isn't present
-set -u
+# It's possible for a hook or a build script to change things like `set -eou
+# pipefail`, causing our bootstrap.sh to misbehave, so this function will set
+# them back to what we expect them to be.
+function buildkite-flags-reset {
+  # Causes this script to exit if a variable isn't present
+  set -u
+
+  # Turn off debugging
+  set +x
+
+  # If a command fails, don't exit, just keep on truckin'
+  set +e
+}
+
+buildkite-flags-reset
 
 ##############################################################
 #
@@ -66,7 +79,7 @@ function buildkite-hook {
   if [[ -e "$HOOK_SCRIPT_PATH" ]]; then
     # Print to the screen we're going to run the hook
     echo "~~~ Running $HOOK_LABEL hook"
-    echo -e "$BUILDKITE_PROMPT . \"$HOOK_SCRIPT_PATH\""
+    echo -e "$BUILDKITE_PROMPT .\"$HOOK_SCRIPT_PATH\""
 
     # Store the current folder, so after the hook, we can return back to the
     # current working directory
@@ -75,6 +88,9 @@ function buildkite-hook {
     # Run the hook
     . "$HOOK_SCRIPT_PATH"
     HOOK_EXIT_STATUS=$?
+
+    # Reset the bootstrap.sh flags
+    buildkite-flags-reset
 
     # Return back to the working dir
     cd $HOOK_PREVIOUS_WORKING_DIR
@@ -106,6 +122,9 @@ function buildkite-local-hook {
 # Come up with the paths used throughout the bootstrap.sh file
 #
 ##############################################################
+
+# Add the $BUILDKITE_BIN_PATH to the $PATH
+export PATH="$BUILDKITE_BIN_PATH:$PATH"
 
 # Come up with the place that the repository will be checked out to
 SANITIZED_AGENT_NAME=$(echo $BUILDKITE_AGENT_NAME | tr -d '"')
@@ -199,8 +218,8 @@ else
 
   # Grab author and commit information and send it back to Buildkite
   buildkite-debug "~~~ Saving Git information"
-  buildkite-run-debug "buildkite-agent build-data set \"buildkite:git:commit\" \"\`git show \"$BUILDKITE_COMMIT\" -s --format=fuller --no-color\`\""
-  buildkite-run-debug "buildkite-agent build-data set \"buildkite:git:branch\" \"\`git branch --contains \"$BUILDKITE_COMMIT\" --no-color\`\""
+  buildkite-run-debug "buildkite-agent meta-data set \"buildkite:git:commit\" \"\`git show \"$BUILDKITE_COMMIT\" -s --format=fuller --no-color\`\""
+  buildkite-run-debug "buildkite-agent meta-data set \"buildkite:git:branch\" \"\`git branch --contains \"$BUILDKITE_COMMIT\" --no-color\`\""
 fi
 
 # Run the `post-checkout` hook
@@ -257,12 +276,7 @@ else
 
     function docker-cleanup {
       echo "~~~ Cleaning up Docker containers"
-      buildkite-run "docker rm -f -v $DOCKER_CONTAINER"
-
-      # Enabling the following line will prevent your build server from filling up,
-      # but will slow down your builds because it'll be built from scratch each time.
-      #
-      # docker rmi -f -v $DOCKER_IMAGE
+      buildkite-run "docker rm -f -v $DOCKER_CONTAINER || true"
     }
 
     trap docker-cleanup EXIT
@@ -278,6 +292,35 @@ else
     # Capture the exit status from the build script
     export BUILDKITE_COMMAND_EXIT_STATUS=$?
 
+  ## Docker Compose
+  elif [[ ! -z "${BUILDKITE_DOCKER_COMPOSE_CONTAINER:-}" ]] && [[ "$BUILDKITE_DOCKER_COMPOSE_CONTAINER" != "" ]]; then
+    # Compose strips dashes and underscores, so we'll remove them to match the docker container names
+    COMPOSE_PROJ_NAME="buildkite"${BUILDKITE_JOB_ID//-}
+    # The name of the docker container compose creates when it creates the adhoc run
+    COMPOSE_CONTAINER_NAME=$COMPOSE_PROJ_NAME"_"$BUILDKITE_DOCKER_COMPOSE_CONTAINER
+
+    function compose-cleanup {
+      echo "~~~ Cleaning up Docker containers"
+      buildkite-run "docker-compose -p $COMPOSE_PROJ_NAME kill || true"
+      buildkite-run "docker-compose -p $COMPOSE_PROJ_NAME rm --force -v || true"
+
+      # The adhoc run container isn't cleaned up by compose, so we have to do it ourselves
+      buildkite-run "docker rm -f -v "$COMPOSE_CONTAINER_NAME"_run_1 || true"
+    }
+
+    trap compose-cleanup EXIT
+
+    # Build the Docker images using Compose, namespaced to the job
+    echo "~~~ Building Docker images"
+    buildkite-run "docker-compose -p $COMPOSE_PROJ_NAME build"
+
+    # Run the build script command in the service specified in BUILDKITE_DOCKER_COMPOSE_CONTAINER
+    echo "~~~ Running build script (in Docker Compose container)"
+    buildkite-prompt-and-run "docker-compose -p $COMPOSE_PROJ_NAME run $BUILDKITE_DOCKER_COMPOSE_CONTAINER ./$BUILDKITE_SCRIPT_PATH"
+
+    # Capture the exit status from the build script
+    export BUILDKITE_COMMAND_EXIT_STATUS=$?
+
   ## Fig
   elif [[ ! -z "${BUILDKITE_FIG_CONTAINER:-}" ]] && [[ "$BUILDKITE_FIG_CONTAINER" != "" ]]; then
     # Fig strips dashes and underscores, so we'll remove them to match the docker container names
@@ -287,19 +330,19 @@ else
 
     function fig-cleanup {
       echo "~~~ Cleaning up Fig Docker containers"
-      buildkite-run "fig -p $FIG_PROJ_NAME kill"
-      buildkite-run "fig -p $FIG_PROJ_NAME rm --force -v"
+      buildkite-run "fig -p $FIG_PROJ_NAME kill || true"
+      buildkite-run "fig -p $FIG_PROJ_NAME rm --force -v || true"
 
       # The adhoc run container isn't cleaned up by fig, so we have to do it ourselves
-      buildkite-run "docker rm -f -v "$FIG_CONTAINER_NAME"_run_1"
-
-      # Enabling the following line will prevent your build server from filling up,
-      # but will slow down your builds because it'll be built from scratch each time.
-      #
-      # docker rmi -f -v $FIG_CONTAINER_NAME
+      buildkite-run "docker rm -f -v "$FIG_CONTAINER_NAME"_run_1 || true"
     }
 
     trap fig-cleanup EXIT
+
+    echo "~~~ :warning: Fig support has been deprecated for Docker Compose (expand for upgrade instructions)"
+    echo "To upgrade: "
+    echo "1) Install Docker Compose on your agent server: http://docs.docker.com/compose/"
+    echo "2) Replace \$BUILDKITE_DOCKER_FIG_CONTAINER environment variables with \$BUILDKITE_DOCKER_COMPOSE_CONTAINER"
 
     # Build the Docker images using Fig, namespaced to the job
     echo "~~~ Building Fig Docker images"
@@ -315,11 +358,14 @@ else
   ## Standard
   else
     echo "~~~ Running build script"
-    echo -e "$BUILDKITE_PROMPT . \"$BUILDKITE_SCRIPT_PATH\""
+    echo -e "$BUILDKITE_PROMPT .\"$BUILDKITE_SCRIPT_PATH\""
     ."/$BUILDKITE_SCRIPT_PATH"
 
     # Capture the exit status from the build script
     export BUILDKITE_COMMAND_EXIT_STATUS=$?
+
+    # Reset the bootstrap.sh flags
+    buildkite-flags-reset
   fi
 fi
 
@@ -337,11 +383,17 @@ buildkite-global-hook "post-command"
 ##############################################################
 
 if [[ "$BUILDKITE_ARTIFACT_PATHS" != "" ]]; then
+  # Run the per-checkout `pre-artifact` hook
+  buildkite-local-hook "pre-artifact"
+
+  # Run the global `pre-artifact` hook
+  buildkite-global-hook "pre-artifact"
+
   echo "~~~ Uploading artifacts"
   if [[ ! -z "${BUILDKITE_ARTIFACT_UPLOAD_DESTINATION:-}" ]] && [[ "$BUILDKITE_ARTIFACT_UPLOAD_DESTINATION" != "" ]]; then
-    buildkite-run "buildkite-agent build-artifact upload \"$BUILDKITE_ARTIFACT_PATHS\" \"$BUILDKITE_ARTIFACT_UPLOAD_DESTINATION\""
+    buildkite-run "buildkite-agent artifact upload \"$BUILDKITE_ARTIFACT_PATHS\" \"$BUILDKITE_ARTIFACT_UPLOAD_DESTINATION\""
   else
-    buildkite-run "buildkite-agent build-artifact upload \"$BUILDKITE_ARTIFACT_PATHS\""
+    buildkite-run "buildkite-agent artifact upload \"$BUILDKITE_ARTIFACT_PATHS\""
   fi
 fi
 
