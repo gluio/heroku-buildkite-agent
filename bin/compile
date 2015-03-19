@@ -1,2 +1,2 @@
 #!/bin/sh
-cat Procfile >> $1/Procfile && cp bin/buildkite-agent $1/bin/ && mkdir -p $1/.buildkite && cp etc/bootstrap.sh $1/.buildkite/boostrap.sh
+cat Procfile >> $1/Procfile && cp bin/buildkite-agent $1/bin/ && mkdir -p $1/.buildkite && cp etc/bootstrap.sh $1/.buildkite/bootstrap.sh
