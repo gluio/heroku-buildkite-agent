@@ -1,2 +1,2 @@
 #!/bin/sh
-cat Procfile >> $1/Procfile
+cat Procfile >> $1/Procfile && cp bin/buildkite-agent $1/bin/
