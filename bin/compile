@@ -9,5 +9,5 @@ echo "=====> Saving $COMMIT_HASH to env"
 mkdir -p $BUILD_DIR/.profile.d
 echo "export COMMIT_HASH=\"\$COMMIT_HASH\"" > $BUILD_DIR/.profile.d/commit_hash.sh
 
-cd $SCRIPT_PATH
+cd $SCRIPT_PATH/..
 cat Procfile >> $1/Procfile && cp bin/buildkite-agent $1/bin/ && mkdir -p $1/.buildkite && cp etc/bootstrap.sh $1/.buildkite/bootstrap.sh && mkdir -p $1/.buildkite/hooks && cp hooks/checkout $1/.buildkite/hooks
