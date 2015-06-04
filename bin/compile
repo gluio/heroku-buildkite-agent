@@ -1,7 +1,7 @@
 #!/bin/sh
-SCRIPT_PATH="`dirname \"$0\"`"
+BUILDPACK_PATH="`dirname \"$0\"`/.."
 BUILD_DIR=$1
 CACHE_DIR=$2
 
 cd $BUILD_DIR
-$SCRIPT_PATH/bin/buildkite-agent start --exit-with-status --priority=100 --token=$BUILDKITE_AGENT_TOKEN --bootstrap-script=$SCRIPT_PATH/etc/bootstrap.sh --hooks-path=$SCRIPT_PATH/hooks
+$BUILDPACK_PATH/bin/buildkite-agent start --exit-with-status --priority=100 --token=$BUILDKITE_AGENT_TOKEN --bootstrap-script=$BUILDPACK_PATH/etc/bootstrap.sh --hooks-path=$BUILDPACK_PATH/hooks
