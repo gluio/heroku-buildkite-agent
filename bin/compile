@@ -5,5 +5,3 @@ CACHE_DIR=$2
 
 cd $BUILD_DIR
 $SCRIPT_PATH/bin/buildkite-agent start --exit-with-status --priority=100 --token=$BUILDKITE_AGENT_TOKEN --bootstrap-script=$SCRIPT_PATH/etc/bootstrap.sh --hooks-path=$SCRIPT_PATH/hooks
-cd $SCRIPT_PATH/..
-cat Procfile >> $1/Procfile && cp bin/buildkite-agent $1/bin/ && mkdir -p $1/.buildkite && cp etc/bootstrap.sh $1/.buildkite/bootstrap.sh && mkdir -p $1/.buildkite/hooks && cp hooks/checkout $1/.buildkite/hooks
