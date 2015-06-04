@@ -10,7 +10,7 @@ export_env_dir() {
   blacklist_regex=${3:-'^(PATH|GIT_DIR|CPATH|CPPATH|LD_PRELOAD|LIBRARY_PATH)$'}
   if [ -d "$ENV_DIR" ]; then
     for e in $(ls $ENV_DIR); do
-      echo "Setting env for $e"
+      echo "Setting $e environment variable for build"
       echo "$e" | grep -qvE "$blacklist_regex" &&
       export "$e=$(cat $ENV_DIR/$e)"
       :
@@ -20,5 +20,6 @@ export_env_dir() {
 
 export_env_dir
 
+echo "Buildkite token is $BUILDKITE_AGENT_TOKEN"
 cd $BUILD_DIR
 $BUILDPACK_PATH/bin/buildkite-agent start --exit-with-status --priority=100 --token=$BUILDKITE_AGENT_TOKEN --bootstrap-script=$BUILDPACK_PATH/etc/bootstrap.sh --hooks-path=$BUILDPACK_PATH/hooks
