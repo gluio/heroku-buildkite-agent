@@ -2,6 +2,19 @@
 BUILDPACK_PATH="`dirname \"$0\"`/.."
 BUILD_DIR=$1
 CACHE_DIR=$2
+ENV_DIR=$3
+
+export_env_dir() {
+  whitelist_regex=${2:-''}
+  blacklist_regex=${3:-'^(PATH|GIT_DIR|CPATH|CPPATH|LD_PRELOAD|LIBRARY_PATH)$'}
+  if [ -d "$ENV_DIR" ]; then
+    for e in $(ls $ENV_DIR); do
+      echo "$e" | grep -E "$whitelist_regex" | grep -qvE "$blacklist_regex" &&
+      export "$e=$(cat $ENV_DIR/$e)"
+      :
+    done
+  fi
+}
 
 cd $BUILD_DIR
 $BUILDPACK_PATH/bin/buildkite-agent start --exit-with-status --priority=100 --token=$BUILDKITE_AGENT_TOKEN --bootstrap-script=$BUILDPACK_PATH/etc/bootstrap.sh --hooks-path=$BUILDPACK_PATH/hooks
