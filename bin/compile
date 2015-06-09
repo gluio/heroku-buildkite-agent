@@ -23,8 +23,15 @@ export_env_dir() {
 
 export_env_dir
 export PATH="$BUILD_DIR/bin:$PATH"
+export BUILDKITE_BOOTSTRAP_SCRIPT_PATH="$BUILDPACK_PATH/etc/bootstrap.sh"
+export BUILDKITE_HOOKS_PATH="$BUILDPACK_PATH/hooks"
+export BUILDKITE_BUILD_PATH=$BUILD_DIR
+export BUILDKITE_AGENT_METADATA="heroku=true"
+export BUILDKITE_AGENT_PRIORITY="100"
+if [ -z "$GIT_SHA" ]; then
+  export BUILDKITE_AGENT_METADATA="$BUILDKITE_AGENT_METADATA,gitsha=$GIT_SHA";
+fi
 
 cd $BUILD_DIR
 
-#TODO: Add heroku flag to metadata
-$BUILDPACK_PATH/bin/buildkite-agent start --exit-with-status --priority=100 --token=$BUILDKITE_AGENT_TOKEN --bootstrap-script=$BUILDPACK_PATH/etc/bootstrap.sh --hooks-path=$BUILDPACK_PATH/hooks --build-path=$BUILD_DIR
+$BUILDPACK_PATH/bin/buildkite-agent start --exit-with-status
