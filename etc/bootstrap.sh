@@ -18,6 +18,9 @@ function buildkite-flags-reset {
   # Causes this script to exit if a variable isn't present
   set -u
 
+  # Ensure command pipes fail if any command fails (e.g. fail-cmd | success-cmd == fail)
+  set -o pipefail
+
   # Turn off debugging
   set +x
 
@@ -39,13 +42,13 @@ BUILDKITE_PROMPT="\033[90m$\033[0m"
 # Shows the command being run, and runs it
 function buildkite-prompt-and-run {
   echo -e "$BUILDKITE_PROMPT $1"
-  eval $1
+  eval "$1"
 }
 
 # Shows the command about to be run, and exits if it fails
 function buildkite-run {
   echo -e "$BUILDKITE_PROMPT $1"
-  eval $1
+  eval "$1"
   EVAL_EXIT_STATUS=$?
 
   if [[ $EVAL_EXIT_STATUS -ne 0 ]]; then
@@ -62,13 +65,20 @@ function buildkite-debug {
 # Runs the command, but only output what it's doing if we're in DEBUG mode
 function buildkite-run-debug {
   buildkite-debug "$BUILDKITE_PROMPT $1"
-  eval $1
+  eval "$1"
 }
 
 # Show an error and exit
 function buildkite-error {
-  echo -e "\033[31mERROR:\033[0m $1"
+  echo -e "~~~ :rotating_light: \033[31mBuildkite Error\033[0m"
+  echo "$1"
   exit 1
+}
+
+# Show a warning
+function buildkite-warning {
+  echo -e "\033[33m⚠️ Buildkite Warning: $1\033[0m"
+  echo "^^^ +++"
 }
 
 # Run a hook script
@@ -93,7 +103,7 @@ function buildkite-hook {
     buildkite-flags-reset
 
     # Return back to the working dir
-    cd $HOOK_PREVIOUS_WORKING_DIR
+    cd "$HOOK_PREVIOUS_WORKING_DIR"
 
     # Exit from the bootstrap.sh script if the hook exits with a non-0 exit
     # status
@@ -127,15 +137,26 @@ function buildkite-local-hook {
 export PATH="$BUILDKITE_BIN_PATH:$PATH"
 
 # Come up with the place that the repository will be checked out to
-SANITIZED_AGENT_NAME=$(echo $BUILDKITE_AGENT_NAME | tr -d '"')
+SANITIZED_AGENT_NAME=$(echo "$BUILDKITE_AGENT_NAME" | tr -d '"')
 PROJECT_FOLDER_NAME="$SANITIZED_AGENT_NAME/$BUILDKITE_PROJECT_SLUG"
-BUILDKITE_BUILD_CHECKOUT_PATH="$BUILDKITE_BUILD_PATH/$PROJECT_FOLDER_NAME"
+export BUILDKITE_BUILD_CHECKOUT_PATH="$BUILDKITE_BUILD_PATH/$PROJECT_FOLDER_NAME"
 
 if [[ "$BUILDKITE_AGENT_DEBUG" == "true" ]]; then
   echo "~~~ Build environment variables"
 
   buildkite-run "env | grep BUILDKITE | sort"
 fi
+
+##############################################################
+#
+# ENVIRONMENT SETUP
+# A place for people to set up environment variables that
+# might be needed for their build scripts, such as secret
+# tokens and other information.
+#
+##############################################################
+
+buildkite-global-hook "environment"
 
 ##############################################################
 #
@@ -170,16 +191,16 @@ else
     # Only bother running the keyscan if the SSH host has been provided by
     # Buildkite. It won't be present if the host isn't using the SSH protocol
     if [[ ! -z "${BUILDKITE_REPO_SSH_HOST:-}" ]]; then
-      : ${BUILDKITE_SSH_DIRECTORY:="$HOME/.ssh"}
-      : ${BUILDKITE_SSH_KNOWN_HOST_PATH:="$BUILDKITE_SSH_DIRECTORY/known_hosts"}
+      : "${BUILDKITE_SSH_DIRECTORY:="$HOME/.ssh"}"
+      : "${BUILDKITE_SSH_KNOWN_HOST_PATH:="$BUILDKITE_SSH_DIRECTORY/known_hosts"}"
 
       # Ensure the known_hosts file exists
-      mkdir -p $BUILDKITE_SSH_DIRECTORY
-      touch $BUILDKITE_SSH_KNOWN_HOST_PATH
+      mkdir -p "$BUILDKITE_SSH_DIRECTORY"
+      touch "$BUILDKITE_SSH_KNOWN_HOST_PATH"
 
       # Only add the output from ssh-keyscan if it doesn't already exist in the
       # known_hosts file
-      if ! ssh-keygen -H -F "$BUILDKITE_REPO_SSH_HOST" | grep --quiet "$BUILDKITE_REPO_SSH_HOST"; then
+      if ! ssh-keygen -H -F "$BUILDKITE_REPO_SSH_HOST" | grep -q "$BUILDKITE_REPO_SSH_HOST"; then
         buildkite-run "ssh-keyscan \"$BUILDKITE_REPO_SSH_HOST\" >> \"$BUILDKITE_SSH_KNOWN_HOST_PATH\""
       fi
     fi
@@ -204,15 +225,21 @@ else
     buildkite-run "git fetch origin \"+refs/pull/$BUILDKITE_PULL_REQUEST/head:\""
   elif [[ "$BUILDKITE_TAG" == "" ]]; then
     # Default empty branch names
-    : ${BUILDKITE_BRANCH:=master}
+    : "${BUILDKITE_BRANCH:=master}"
 
     buildkite-run "git reset --hard origin/$BUILDKITE_BRANCH"
   fi
 
   buildkite-run "git checkout -qf \"$BUILDKITE_COMMIT\""
 
-  # `submodule sync` will ensure the .git/config matches the .gitmodules file
-  buildkite-run "git submodule sync"
+  # `submodule sync` will ensure the .git/config matches the .gitmodules file.
+  # The command is only available in git version 1.8.1, so if the call fails,
+  # continue the bootstrap script, and show an informative error.
+  buildkite-prompt-and-run "git submodule sync --recursive"
+  if [[ $? -ne 0 ]]; then
+    buildkite-warning "Failed to recursively sync git submodules. This is most likely because you have an older version of git installed ($(git --version)) and you need version 1.8.1 and above. If your using submodules, it's highly recommended you upgrade if you can."
+  fi
+
   buildkite-run "git submodule update --init --recursive"
   buildkite-run "git submodule foreach --recursive git reset --hard"
 
@@ -222,8 +249,26 @@ else
   buildkite-run-debug "buildkite-agent meta-data set \"buildkite:git:branch\" \"\`git branch --contains \"$BUILDKITE_COMMIT\" --no-color\`\""
 fi
 
+# Store the current value of BUILDKITE_BUILD_CHECKOUT_PATH, so we can detect if
+# one of the post-checkout hooks changed it.
+PREVIOUS_BUILDKITE_BUILD_CHECKOUT_PATH=$BUILDKITE_BUILD_CHECKOUT_PATH
+
 # Run the `post-checkout` hook
 buildkite-global-hook "post-checkout"
+
+# Now that we have a repo, we can perform a `post-checkout` local hook
+buildkite-local-hook "post-checkout"
+
+# If the BUILDKITE_BUILD_CHECKOUT_PATH has been changed, log and switch to it
+if [[ "$PREVIOUS_BUILDKITE_BUILD_CHECKOUT_PATH" != "$BUILDKITE_BUILD_CHECKOUT_PATH" ]]; then
+  echo "~~~ A post-checkout hook has changed the build path to $BUILDKITE_BUILD_CHECKOUT_PATH"
+
+  if [ -d "$BUILDKITE_BUILD_CHECKOUT_PATH" ]; then
+    buildkite-run "cd $BUILDKITE_BUILD_CHECKOUT_PATH"
+  else
+    buildkite-error "Failed to switch to \"$BUILDKITE_BUILD_CHECKOUT_PATH\" as it doesn't exist"
+  fi
+fi
 
 ##############################################################
 #
@@ -237,24 +282,52 @@ if [[ "$BUILDKITE_COMMAND" == "" ]]; then
   buildkite-error "No command has been defined. Please go to \"Project Settings\" and configure your build step's \"Command\""
 fi
 
-# If the command is a file on the filesystem, that's the script we're going to
-# run
-if [[ -e "$BUILDKITE_COMMAND" ]]; then
-  BUILDKITE_SCRIPT_PATH=$BUILDKITE_COMMAND
-else
-  # If the command isn't a file, then it's probably a command with arguments we
-  # need to run.
-  if [[ "$BUILDKITE_SCRIPT_EVAL" == "true" ]]; then
-    BUILDKITE_SCRIPT_PATH="buildkite-script-$BUILDKITE_JOB_ID"
+# Generate a temporary build script containing what to actually run.
+buildkite-debug "~~~ Preparing build script"
+BUILDKITE_SCRIPT_PATH="buildkite-script-$BUILDKITE_JOB_ID"
 
-    echo "$BUILDKITE_COMMAND" > $BUILDKITE_SCRIPT_PATH
-  else
-    buildkite-error "This agent has not been allowed to evaluate scripts. Re-run this agent and remove the \`--no-script-eval\` option, or specify a script on the file system to run instead."
-  fi
+# Generate a different script depending on whether or not it's a script to
+# execute
+if [[ -f "$BUILDKITE_COMMAND" ]]; then
+  # Make sure the script they're trying to execute has chmod +x. We can't do
+  # this inside the script we generate because it fails within Docker:
+  # https://github.com/docker/docker/issues/9547
+  buildkite-run-debug "chmod +x \"$BUILDKITE_COMMAND\""
+  echo -e '#!/bin/bash'"\n./\"$BUILDKITE_COMMAND\"" > "$BUILDKITE_SCRIPT_PATH"
+else
+  echo -e '#!/bin/bash'"\n$BUILDKITE_COMMAND" > "$BUILDKITE_SCRIPT_PATH"
 fi
 
-# Make sure the script we're going to run is executable
-chmod +x $BUILDKITE_SCRIPT_PATH
+if [[ "$BUILDKITE_AGENT_DEBUG" == "true" ]]; then
+  buildkite-run "cat $BUILDKITE_SCRIPT_PATH"
+fi
+
+# Ensure the temporary build script can be executed
+chmod +x "$BUILDKITE_SCRIPT_PATH"
+
+# If the command isn't a file on the filesystem, then it's something we need to
+# eval. But before we even try running it, we should double check that the
+# agent is allowed to eval commands.
+#
+# NOTE: There is a slight problem with this check - and it's with usage with
+# Docker. If you specify a script to run inside the docker container, and that
+# isn't on the file system at the same path, then it won't match, and it'll be
+# treated as an eval. For example, you mount your repository at /app, and tell
+# the agent run `app/ci.sh`, ci.sh won't exist on the filesytem at this point
+# at app/ci.sh. The soltion is to make sure the `workdir` directroy of the
+# docker container is at /app in that case.
+if [[ ! -f "$BUILDKITE_COMMAND" ]]; then
+  # Make sure the agent is even allowed to eval commands
+  if [[ "$BUILDKITE_COMMAND_EVAL" != "true" ]]; then
+    buildkite-error "This agent is not allowed to evaluate console commands. To allow this, re-run this agent without the \`--no-command-eval\` option, or specify a script within your repository to run instead (such as scripts/test.sh)."
+  fi
+
+  BUILDKITE_COMMAND_ACTION="Running command"
+  BUILDKITE_COMMAND_DISPLAY=$BUILDKITE_COMMAND
+else
+  BUILDKITE_COMMAND_ACTION="Running build script"
+  BUILDKITE_COMMAND_DISPLAY="./\"$BUILDKITE_COMMAND\""
+fi
 
 # Run the global `pre-command` hook
 buildkite-global-hook "pre-command"
@@ -271,8 +344,8 @@ if [[ -e "$BUILDKITE_HOOKS_PATH/command" ]]; then
 else
   ## Docker
   if [[ ! -z "${BUILDKITE_DOCKER:-}" ]] && [[ "$BUILDKITE_DOCKER" != "" ]]; then
-    DOCKER_CONTAINER="buildkite_"$BUILDKITE_JOB_ID"_container"
-    DOCKER_IMAGE="buildkite_"$BUILDKITE_JOB_ID"_image"
+    DOCKER_CONTAINER="buildkite_${BUILDKITE_JOB_ID}_container"
+    DOCKER_IMAGE="buildkite_${BUILDKITE_JOB_ID}_image"
 
     function docker-cleanup {
       echo "~~~ Cleaning up Docker containers"
@@ -283,11 +356,12 @@ else
 
     # Build the Docker image, namespaced to the job
     echo "~~~ Building Docker image $DOCKER_IMAGE"
-    buildkite-run "docker build -t $DOCKER_IMAGE ."
+
+    buildkite-run "docker build -f ${BUILDKITE_DOCKER_FILE:-Dockerfile} -t $DOCKER_IMAGE ."
 
     # Run the build script command in a one-off container
-    echo "~~~ Running build script (in Docker container)"
-    buildkite-prompt-and-run "docker run --name $DOCKER_CONTAINER $DOCKER_IMAGE ./$BUILDKITE_SCRIPT_PATH"
+    echo "~~~ $BUILDKITE_COMMAND_ACTION (in Docker container)"
+    buildkite-prompt-and-run "docker run --name $DOCKER_CONTAINER $DOCKER_IMAGE \"./$BUILDKITE_SCRIPT_PATH\""
 
     # Capture the exit status from the build script
     export BUILDKITE_COMMAND_EXIT_STATUS=$?
@@ -298,67 +372,35 @@ else
     COMPOSE_PROJ_NAME="buildkite"${BUILDKITE_JOB_ID//-}
     # The name of the docker container compose creates when it creates the adhoc run
     COMPOSE_CONTAINER_NAME=$COMPOSE_PROJ_NAME"_"$BUILDKITE_DOCKER_COMPOSE_CONTAINER
+    COMPOSE_COMMAND="docker-compose -f ${BUILDKITE_DOCKER_COMPOSE_FILE:-docker-compose.yml} -p $COMPOSE_PROJ_NAME"
 
     function compose-cleanup {
       echo "~~~ Cleaning up Docker containers"
-      buildkite-run "docker-compose -p $COMPOSE_PROJ_NAME kill || true"
-      buildkite-run "docker-compose -p $COMPOSE_PROJ_NAME rm --force -v || true"
+      buildkite-run "$COMPOSE_COMMAND kill || true"
+      buildkite-run "$COMPOSE_COMMAND rm --force -v || true"
 
       # The adhoc run container isn't cleaned up by compose, so we have to do it ourselves
-      buildkite-run "docker rm -f -v "$COMPOSE_CONTAINER_NAME"_run_1 || true"
+      buildkite-run "docker rm -f -v ${COMPOSE_CONTAINER_NAME}_run_1 || true"
     }
 
     trap compose-cleanup EXIT
 
     # Build the Docker images using Compose, namespaced to the job
     echo "~~~ Building Docker images"
-    buildkite-run "docker-compose -p $COMPOSE_PROJ_NAME build"
+
+    buildkite-run "$COMPOSE_COMMAND build"
 
     # Run the build script command in the service specified in BUILDKITE_DOCKER_COMPOSE_CONTAINER
-    echo "~~~ Running build script (in Docker Compose container)"
-    buildkite-prompt-and-run "docker-compose -p $COMPOSE_PROJ_NAME run $BUILDKITE_DOCKER_COMPOSE_CONTAINER ./$BUILDKITE_SCRIPT_PATH"
-
-    # Capture the exit status from the build script
-    export BUILDKITE_COMMAND_EXIT_STATUS=$?
-
-  ## Fig
-  elif [[ ! -z "${BUILDKITE_FIG_CONTAINER:-}" ]] && [[ "$BUILDKITE_FIG_CONTAINER" != "" ]]; then
-    # Fig strips dashes and underscores, so we'll remove them to match the docker container names
-    FIG_PROJ_NAME="buildkite"${BUILDKITE_JOB_ID//-}
-    # The name of the docker container fig creates when it creates the adhoc run
-    FIG_CONTAINER_NAME=$FIG_PROJ_NAME"_"$BUILDKITE_FIG_CONTAINER
-
-    function fig-cleanup {
-      echo "~~~ Cleaning up Fig Docker containers"
-      buildkite-run "fig -p $FIG_PROJ_NAME kill || true"
-      buildkite-run "fig -p $FIG_PROJ_NAME rm --force -v || true"
-
-      # The adhoc run container isn't cleaned up by fig, so we have to do it ourselves
-      buildkite-run "docker rm -f -v "$FIG_CONTAINER_NAME"_run_1 || true"
-    }
-
-    trap fig-cleanup EXIT
-
-    echo "~~~ :warning: Fig support has been deprecated for Docker Compose (expand for upgrade instructions)"
-    echo "To upgrade: "
-    echo "1) Install Docker Compose on your agent server: http://docs.docker.com/compose/"
-    echo "2) Replace \$BUILDKITE_DOCKER_FIG_CONTAINER environment variables with \$BUILDKITE_DOCKER_COMPOSE_CONTAINER"
-
-    # Build the Docker images using Fig, namespaced to the job
-    echo "~~~ Building Fig Docker images"
-    buildkite-run "fig -p $FIG_PROJ_NAME build"
-
-    # Run the build script command in the service specified in BUILDKITE_FIG_CONTAINER
-    echo "~~~ Running build script (in Fig container)"
-    buildkite-prompt-and-run "fig -p $FIG_PROJ_NAME run $BUILDKITE_FIG_CONTAINER ./$BUILDKITE_SCRIPT_PATH"
+    echo "~~~ $BUILDKITE_COMMAND_ACTION (in Docker Compose container)"
+    buildkite-prompt-and-run "$COMPOSE_COMMAND run $BUILDKITE_DOCKER_COMPOSE_CONTAINER \"./$BUILDKITE_SCRIPT_PATH\""
 
     # Capture the exit status from the build script
     export BUILDKITE_COMMAND_EXIT_STATUS=$?
 
   ## Standard
   else
-    echo "~~~ Running build script"
-    echo -e "$BUILDKITE_PROMPT .\"$BUILDKITE_SCRIPT_PATH\""
+    echo "~~~ $BUILDKITE_COMMAND_ACTION"
+    echo -e "$BUILDKITE_PROMPT $BUILDKITE_COMMAND_DISPLAY"
     ."/$BUILDKITE_SCRIPT_PATH"
 
     # Capture the exit status from the build script
@@ -391,9 +433,15 @@ if [[ "$BUILDKITE_ARTIFACT_PATHS" != "" ]]; then
 
   echo "~~~ Uploading artifacts"
   if [[ ! -z "${BUILDKITE_ARTIFACT_UPLOAD_DESTINATION:-}" ]] && [[ "$BUILDKITE_ARTIFACT_UPLOAD_DESTINATION" != "" ]]; then
-    buildkite-run "buildkite-agent artifact upload \"$BUILDKITE_ARTIFACT_PATHS\" \"$BUILDKITE_ARTIFACT_UPLOAD_DESTINATION\""
+    buildkite-prompt-and-run "buildkite-agent artifact upload \"$BUILDKITE_ARTIFACT_PATHS\" \"$BUILDKITE_ARTIFACT_UPLOAD_DESTINATION\""
   else
-    buildkite-run "buildkite-agent artifact upload \"$BUILDKITE_ARTIFACT_PATHS\""
+    buildkite-prompt-and-run "buildkite-agent artifact upload \"$BUILDKITE_ARTIFACT_PATHS\""
+  fi
+
+  # If the artifact upload fails, open the current group and exit with an error
+  if [[ $? -ne 0 ]]; then
+    echo "^^^ +++"
+    exit 1
   fi
 fi
 
