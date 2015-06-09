@@ -4,6 +4,9 @@ BUILD_DIR=$1
 CACHE_DIR=$2
 ENV_DIR=$3
 
+# TODO: Be more defensive about checking if this feature is available
+GIT_SHA=$(sed -e 's/^.*"commit":"\([a-f0-9]\+\)".*$/\1/' /etc/heroku/dyno)
+
 echo "Environment is in $ENV_DIR"
 
 export_env_dir() {
@@ -22,4 +25,6 @@ export_env_dir
 export PATH="$BUILD_DIR/bin:$PATH"
 
 cd $BUILD_DIR
+
+#TODO: Add heroku flag to metadata
 $BUILDPACK_PATH/bin/buildkite-agent start --exit-with-status --priority=100 --token=$BUILDKITE_AGENT_TOKEN --bootstrap-script=$BUILDPACK_PATH/etc/bootstrap.sh --hooks-path=$BUILDPACK_PATH/hooks --build-path=$BUILD_DIR

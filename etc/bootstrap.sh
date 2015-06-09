@@ -166,6 +166,7 @@ buildkite-global-hook "environment"
 #
 ##############################################################
 
+# TODO: Check current git SHA vs what working is expecting
 # Run the `pre-checkout` hook
 buildkite-global-hook "pre-checkout"
 
