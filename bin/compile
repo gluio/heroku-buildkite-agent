@@ -28,6 +28,12 @@ export BUILDKITE_AGENT_PRIORITY="100"
 if [ -z "$GIT_SHA" ]; then
   export BUILDKITE_AGENT_METADATA="$BUILDKITE_AGENT_METADATA,gitsha=$GIT_SHA";
 fi
+if [ -z "$APP_NAME" ]; then
+  export BUILDKITE_AGENT_METADATA="$BUILDKITE_AGENT_METADATA,appname=$APP_NAME";
+else
+  echo "ERROR: Need to set APP_NAME config var so that we can tell Buildkite to"
+  echo "       only target this agent for builds."
+fi
 
 cd $BUILD_DIR
 
