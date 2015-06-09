@@ -7,13 +7,10 @@ ENV_DIR=$3
 # TODO: Be more defensive about checking if this feature is available
 GIT_SHA=$(sed -e 's/^.*"commit":"\([a-f0-9]\+\)".*$/\1/' /etc/heroku/dyno)
 
-echo "Environment is in $ENV_DIR"
-
 export_env_dir() {
   blacklist_regex=${3:-'^(PATH|GIT_DIR|CPATH|CPPATH|LD_PRELOAD|LIBRARY_PATH)$'}
   if [ -d "$ENV_DIR" ]; then
     for e in $(ls $ENV_DIR); do
-      echo "Setting $e environment variable for build"
       echo "$e" | grep -qvE "$blacklist_regex" &&
       export "$e=$(cat $ENV_DIR/$e)"
       :
