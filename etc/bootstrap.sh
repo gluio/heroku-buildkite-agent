@@ -9,7 +9,9 @@
 # |_.__/ \__,_|_|_|\__,_|_|\_\_|\__\___|  |_.__/ \___/ \___/ \__|___/\__|_|  \__,_| .__/
 #                                                                                 | |
 #                                                                                 |_|
+# Based on:
 # https://github.com/buildkite/agent/blob/master/templates/bootstrap.sh
+# customised by glenngillen to work with Heroku build and deployment flows
 
 # It's possible for a hook or a build script to change things like `set -eou
 # pipefail`, causing our bootstrap.sh to misbehave, so this function will set
@@ -167,8 +169,6 @@ buildkite-global-hook "environment"
 ##############################################################
 
 # TODO: Check current git SHA vs what working is expecting
-# Run the `pre-checkout` hook
-buildkite-global-hook "pre-checkout"
 
 # Remove the checkout folder if BUILDKITE_CLEAN_CHECKOUT is present
 if [[ ! -z "${BUILDKITE_CLEAN_CHECKOUT:-}" ]] && [[ "$BUILDKITE_CLEAN_CHECKOUT" == "true" ]]; then
