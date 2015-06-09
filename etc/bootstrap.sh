@@ -168,87 +168,13 @@ buildkite-global-hook "environment"
 #
 ##############################################################
 
-# TODO: Check current git SHA vs what working is expecting
+# TODO: Check current git SHA vs matched $BUILDKITE_COMMIT
+# Grab author and commit information and send it back to Buildkite
 
-# Remove the checkout folder if BUILDKITE_CLEAN_CHECKOUT is present
-if [[ ! -z "${BUILDKITE_CLEAN_CHECKOUT:-}" ]] && [[ "$BUILDKITE_CLEAN_CHECKOUT" == "true" ]]; then
-  echo "~~~ Cleaning project checkout"
-
-  buildkite-run "rm -rf \"$BUILDKITE_BUILD_CHECKOUT_PATH\""
-fi
-
-echo "~~~ Preparing build folder"
-
-buildkite-run "mkdir -p \"$BUILDKITE_BUILD_CHECKOUT_PATH\""
-buildkite-run "cd \"$BUILDKITE_BUILD_CHECKOUT_PATH\""
-
-# If the user has specificed their own checkout hook
-if [[ -e "$BUILDKITE_HOOKS_PATH/checkout" ]]; then
-  buildkite-global-hook "checkout"
-else
-  # If enabled, automatically run an ssh-keyscan on the git ssh host, to prevent
-  # a yes/no promp from appearing when cloning/fetching
-  if [[ ! -z "${BUILDKITE_AUTO_SSH_FINGERPRINT_VERIFICATION:-}" ]] && [[ "$BUILDKITE_AUTO_SSH_FINGERPRINT_VERIFICATION" == "true" ]]; then
-    # Only bother running the keyscan if the SSH host has been provided by
-    # Buildkite. It won't be present if the host isn't using the SSH protocol
-    if [[ ! -z "${BUILDKITE_REPO_SSH_HOST:-}" ]]; then
-      : "${BUILDKITE_SSH_DIRECTORY:="$HOME/.ssh"}"
-      : "${BUILDKITE_SSH_KNOWN_HOST_PATH:="$BUILDKITE_SSH_DIRECTORY/known_hosts"}"
-
-      # Ensure the known_hosts file exists
-      mkdir -p "$BUILDKITE_SSH_DIRECTORY"
-      touch "$BUILDKITE_SSH_KNOWN_HOST_PATH"
-
-      # Only add the output from ssh-keyscan if it doesn't already exist in the
-      # known_hosts file
-      if ! ssh-keygen -H -F "$BUILDKITE_REPO_SSH_HOST" | grep -q "$BUILDKITE_REPO_SSH_HOST"; then
-        buildkite-run "ssh-keyscan \"$BUILDKITE_REPO_SSH_HOST\" >> \"$BUILDKITE_SSH_KNOWN_HOST_PATH\""
-      fi
-    fi
-  fi
-
-  # Disable any interactive Git/SSH prompting
-  export GIT_TERMINAL_PROMPT=0
-
-  # Do we need to do a git checkout?
-  if [[ ! -d ".git" ]]; then
-    buildkite-run "git clone \"$BUILDKITE_REPO\" . -qv"
-  fi
-
-  buildkite-run "git clean -fdq"
-  buildkite-run "git submodule foreach --recursive git clean -fdq"
-
-  buildkite-run "git fetch -q"
-
-  # Allow checkouts of forked pull requests on GitHub only. See:
-  # https://help.github.com/articles/checking-out-pull-requests-locally/#modifying-an-inactive-pull-request-locally
-  if [[ "$BUILDKITE_PULL_REQUEST" != "false" ]] && [[ "$BUILDKITE_PROJECT_PROVIDER" == *"github"* ]]; then
-    buildkite-run "git fetch origin \"+refs/pull/$BUILDKITE_PULL_REQUEST/head:\""
-  elif [[ "$BUILDKITE_TAG" == "" ]]; then
-    # Default empty branch names
-    : "${BUILDKITE_BRANCH:=master}"
-
-    buildkite-run "git reset --hard origin/$BUILDKITE_BRANCH"
-  fi
-
-  buildkite-run "git checkout -qf \"$BUILDKITE_COMMIT\""
-
-  # `submodule sync` will ensure the .git/config matches the .gitmodules file.
-  # The command is only available in git version 1.8.1, so if the call fails,
-  # continue the bootstrap script, and show an informative error.
-  buildkite-prompt-and-run "git submodule sync --recursive"
-  if [[ $? -ne 0 ]]; then
-    buildkite-warning "Failed to recursively sync git submodules. This is most likely because you have an older version of git installed ($(git --version)) and you need version 1.8.1 and above. If your using submodules, it's highly recommended you upgrade if you can."
-  fi
-
-  buildkite-run "git submodule update --init --recursive"
-  buildkite-run "git submodule foreach --recursive git reset --hard"
-
-  # Grab author and commit information and send it back to Buildkite
-  buildkite-debug "~~~ Saving Git information"
-  buildkite-run-debug "buildkite-agent meta-data set \"buildkite:git:commit\" \"\`git show \"$BUILDKITE_COMMIT\" -s --format=fuller --no-color\`\""
-  buildkite-run-debug "buildkite-agent meta-data set \"buildkite:git:branch\" \"\`git branch --contains \"$BUILDKITE_COMMIT\" --no-color\`\""
-fi
+# TODO: Work out Heroku approximations of the following
+#buildkite-debug "~~~ Saving Git information"
+#buildkite-run-debug "buildkite-agent meta-data set \"buildkite:git:commit\" \"\`git show \"$BUILDKITE_COMMIT\" -s --format=fuller --no-color\`\""
+#buildkite-run-debug "buildkite-agent meta-data set \"buildkite:git:branch\" \"\`git branch --contains \"$BUILDKITE_COMMIT\" --no-color\`\""
 
 # Store the current value of BUILDKITE_BUILD_CHECKOUT_PATH, so we can detect if
 # one of the post-checkout hooks changed it.
