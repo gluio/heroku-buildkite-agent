@@ -19,7 +19,7 @@ export_env_dir() {
 }
 
 export_env_dir
-export PATH="$BUILD_DIR:$PATH"
+export PATH="$BUILD_DIR/bin:$PATH"
 
 cd $BUILD_DIR
 $BUILDPACK_PATH/bin/buildkite-agent start --exit-with-status --priority=100 --token=$BUILDKITE_AGENT_TOKEN --bootstrap-script=$BUILDPACK_PATH/etc/bootstrap.sh --hooks-path=$BUILDPACK_PATH/hooks --build-path=$BUILD_DIR
