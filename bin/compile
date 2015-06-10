@@ -4,9 +4,6 @@ BUILD_DIR=$1
 CACHE_DIR=$2
 ENV_DIR=$3
 
-# TODO: Be more defensive about checking if this feature is available
-GIT_SHA=$(sed -e 's/^.*"commit":"\([a-f0-9]\+\)".*$/\1/' /etc/heroku/dyno)
-
 export_env_dir() {
   blacklist_regex=${3:-'^(PATH|GIT_DIR|CPATH|CPPATH|LD_PRELOAD|LIBRARY_PATH)$'}
   if [ -d "$ENV_DIR" ]; then
@@ -26,7 +23,7 @@ export BUILDKITE_BUILD_PATH=$BUILD_DIR
 export BUILDKITE_AGENT_METADATA="heroku=true"
 export BUILDKITE_AGENT_PRIORITY="100"
 if [ -z "$GIT_SHA" ]; then
-  export BUILDKITE_AGENT_METADATA="$BUILDKITE_AGENT_METADATA,gitsha=$GIT_SHA";
+  export BUILDKITE_AGENT_METADATA="$BUILDKITE_AGENT_METADATA";
 fi
 if [ -z "$APP_NAME" ]; then
   export BUILDKITE_AGENT_METADATA="$BUILDKITE_AGENT_METADATA,appname=$APP_NAME";
