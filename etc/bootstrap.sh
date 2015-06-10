@@ -168,19 +168,20 @@ buildkite-global-hook "environment"
 #
 ##############################################################
 
-if [ ! -f /etc/heroku/dyno ]; then
-  buildkite-error "Dyno metadata not found. Contact brett@heroku.com and ask for runtime-dyno-metadata to be enabled for this app."
-fi
-GIT_SHA=$(sed -e 's/^.*"commit":"\([a-f0-9]\+\)".*$/\1/' /etc/heroku/dyno)
-if [ -z "$GIT_SHA" ]; then
-  buildkite-error "Dyno metadata does not include a commit SHA, unable to verify we have the correct build."
-else
-  if [ "$BUILDKITE_COMMIT" == "$GIT_SHA" ]; then
-    buildkite-debug "Dyno is running the correct code."
-  else
-    buildkite-error "Dyno codebase ($GIT_SHA) doesn't match expected commit SHA of $BUILDKITE_COMMIT"
-  fi
-fi
+# TODO: Seems this isn't available during build :( Need to find an alternative approach
+#if [ ! -f /etc/heroku/dyno ]; then
+#  buildkite-error "Dyno metadata not found. Contact brett@heroku.com and ask for runtime-dyno-metadata to be enabled for this app."
+#fi
+#GIT_SHA=$(sed -e 's/^.*"commit":"\([a-f0-9]\+\)".*$/\1/' /etc/heroku/dyno)
+#if [ -z "$GIT_SHA" ]; then
+#  buildkite-error "Dyno metadata does not include a commit SHA, unable to verify we have the correct build."
+#else
+#  if [ "$BUILDKITE_COMMIT" == "$GIT_SHA" ]; then
+#    buildkite-debug "Dyno is running the correct code."
+#  else
+#    buildkite-error "Dyno codebase ($GIT_SHA) doesn't match expected commit SHA of $BUILDKITE_COMMIT"
+#  fi
+#fi
 
 # TODO: Work out Heroku approximations of the following
 # Grab author and commit information and send it back to Buildkite
