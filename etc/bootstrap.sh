@@ -170,6 +170,11 @@ buildkite-global-hook "environment"
 
 # TODO: Check current git SHA vs matched $BUILDKITE_COMMIT
 # Grab author and commit information and send it back to Buildkite
+if [ ! -f /etc/heroku/dyno ]; then
+  buildkite-error "Dyno metadata not found. Contact brett@heroku.com and ask for runtime-dyno-metadata to be enabled for this app."
+fi
+
+
 
 # TODO: Work out Heroku approximations of the following
 #buildkite-debug "~~~ Saving Git information"
