@@ -30,7 +30,7 @@ if [ -z "$APP_NAME" ]; then
 else
   echo "ERROR: Need to set APP_NAME config var so that we can tell Buildkite to"
   echo "       only target this agent for builds."
-  exit(1)
+  exit 1
 fi
 
 cd $BUILD_DIR
