@@ -35,4 +35,5 @@ fi
 
 cd $BUILD_DIR
 
+echo $(ls -al $BUILDPACK_PATH)
 timeout 600 "$BUILDPACK_PATH/bin/buildkite-agent start --exit-with-status"
