@@ -22,10 +22,10 @@ export BUILDKITE_HOOKS_PATH="$BUILDPACK_PATH/hooks"
 export BUILDKITE_BUILD_PATH=$BUILD_DIR
 export BUILDKITE_AGENT_METADATA="heroku=true"
 export BUILDKITE_AGENT_PRIORITY="100"
-if [ -z "$SOURCE_VERSION" ]; then
+if [ ! -z "$SOURCE_VERSION" ]; then
   export BUILDKITE_AGENT_METADATA="$BUILDKITE_AGENT_METADATA,sha=$SOURCE_VERSION";
 fi
-if [ -z "$APP_NAME" ]; then
+if [ ! -z "$APP_NAME" ]; then
   export BUILDKITE_AGENT_METADATA="$BUILDKITE_AGENT_METADATA,appname=$APP_NAME";
 else
   echo "ERROR: Need to set APP_NAME config var so that we can tell Buildkite to"
