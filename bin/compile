@@ -36,4 +36,4 @@ fi
 cd $BUILD_DIR
 
 echo $(ls -al $BUILDPACK_PATH/bin/buildkite-agent)
-timeout 600 BUILDKITE_AGENT_METADATA="$BUILDKITE_AGENT_METADATA" $BUILDPACK_PATH/bin/buildkite-agent start --exit-with-status
+timeout 600 env BUILDKITE_AGENT_METADATA="$BUILDKITE_AGENT_METADATA" $BUILDPACK_PATH/bin/buildkite-agent start --exit-with-status
