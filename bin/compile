@@ -20,13 +20,13 @@ export PATH="$BUILD_DIR/bin:$PATH"
 export BUILDKITE_BOOTSTRAP_SCRIPT_PATH="$BUILDPACK_PATH/etc/bootstrap.sh"
 export BUILDKITE_HOOKS_PATH="$BUILDPACK_PATH/hooks"
 export BUILDKITE_BUILD_PATH=$BUILD_DIR
-export BUILDKITE_AGENT_METADATA="heroku=true"
+export BUILDKITE_AGENT_META_DATA="heroku=true"
 export BUILDKITE_AGENT_PRIORITY="100"
 if [ ! -z "$SOURCE_VERSION" ]; then
-  export BUILDKITE_AGENT_METADATA="$BUILDKITE_AGENT_METADATA,sha=$SOURCE_VERSION";
+  export BUILDKITE_AGENT_META_DATA="$BUILDKITE_AGENT_META_DATA,sha=$SOURCE_VERSION";
 fi
 if [ ! -z "$APP_NAME" ]; then
-  export BUILDKITE_AGENT_METADATA="$BUILDKITE_AGENT_METADATA,appname=$APP_NAME";
+  export BUILDKITE_AGENT_META_DATA="$BUILDKITE_AGENT_META_DATA,appname=$APP_NAME";
 else
   echo "ERROR: Need to set APP_NAME config var so that we can tell Buildkite to"
   echo "       only target this agent for builds."
@@ -36,4 +36,4 @@ fi
 cd $BUILD_DIR
 
 echo $(ls -al $BUILDPACK_PATH/bin/buildkite-agent)
-env BUILDKITE_AGENT_METADATA="$BUILDKITE_AGENT_METADATA" $BUILDPACK_PATH/bin/buildkite-agent start
+$BUILDPACK_PATH/bin/buildkite-agent start
