@@ -3,6 +3,7 @@ BUILDPACK_PATH="`dirname \"$0\"`/.."
 BUILD_DIR=$1
 CACHE_DIR=$2
 ENV_DIR=$3
+PROFILE_DIR="$BUILD_DIR/.profile.d"
 
 export_env_dir() {
   blacklist_regex=${3:-'^(PATH|GIT_DIR|CPATH|CPPATH|LD_PRELOAD|LIBRARY_PATH)$'}
@@ -11,6 +12,14 @@ export_env_dir() {
       echo "$e" | grep -qvE "$blacklist_regex" &&
       export "$e=$(cat $ENV_DIR/$e)"
       :
+    done
+  fi
+}
+
+source_profiles() {
+  if [ -d "$PROFILE_DIR" ]; then
+    for e in $(ls $PROFILE_DIR); do
+      source $e
     done
   fi
 }
