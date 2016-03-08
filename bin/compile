@@ -20,7 +20,7 @@ source_profiles() {
   if [ -d "$PROFILE_DIR" ]; then
     for p in $(ls $PROFILE_DIR); do
       echo "Sourcing profile $PROFILE_DIR/$p"
-      source $p
+      source $PROFILE_DIR/$p
     done
   fi
 }
