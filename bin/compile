@@ -18,8 +18,9 @@ export_env_dir() {
 
 source_profiles() {
   if [ -d "$PROFILE_DIR" ]; then
-    for e in $(ls $PROFILE_DIR); do
-      source $e
+    for p in $(ls $PROFILE_DIR); do
+      echo "Sourcing profile $p"
+      source $p
     done
   fi
 }
