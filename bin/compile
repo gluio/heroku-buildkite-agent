@@ -26,6 +26,7 @@ source_profiles() {
 }
 
 export_env_dir
+source_profiles
 export PATH="$BUILD_DIR/bin:$PATH"
 export BUILDKITE_BOOTSTRAP_SCRIPT_PATH="$BUILDPACK_PATH/etc/bootstrap.sh"
 export BUILDKITE_HOOKS_PATH="$BUILDPACK_PATH/hooks"
